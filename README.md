@@ -44,6 +44,7 @@
 
 ### 4. 有道智云 API
 
+******当前有道智云新人登录注册可以免费获得50元的token，实测非常的爽。
 如果使用真实翻译，需要准备有道智云文本翻译应用的：
 
 - 应用 ID，即 `YOUDAO_APP_KEY`
@@ -87,16 +88,13 @@ YOUDAO_APP_KEY=xxxxxxxx
 YOUDAO_APP_SECRET=xxxxxxxxxxxxxxxx
 ```
 
-`.env` 里保存的是密钥信息，不建议提交到 Git 仓库。
-
 ---
 
 ## 配置 `config.json`
 
 项目会读取根目录下的 `config.json`。如果文件不存在，程序会使用代码里的默认配置。
-
-推荐创建一个 `config.json`：
-
+ 
+config.json 示例：
 ```json
 {
   "save_dir": "D:/translate_tool/data",
@@ -247,7 +245,7 @@ resident_app.py 弹出结果窗口
 
 ## 常见问题
 
-### 1. 第一次翻译为什么比较慢？
+### 1. 第一次翻译为什么比较慢？(第一次可能需要2s左右，但是之后基本上在几百毫秒，基本上是秒出)
 
 第一次翻译时，`translator.ahk` 需要启动 `resident_app.py`，而 `resident_app.py` 会加载 Python、PySide6 和界面组件，所以会慢一些。
 
