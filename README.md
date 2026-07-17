@@ -13,7 +13,8 @@
 ## 功能特性
 
 - 支持选中文字后按快捷键翻译。
-- 支持常驻模式，避免每次翻译都重新启动 Python/PySide6。
+- 支持常驻单实例模式，避免每次翻译都重新启动 Python/PySide6。
+- 翻译请求在后台线程执行，不阻塞界面和心跳。
 - 支持有道智云文本翻译 API。
 - 支持 `mock` 测试模式，不调用真实 API。
 - 翻译结果按日期追加保存到本地文件。
@@ -92,17 +93,18 @@ YOUDAO_APP_SECRET=xxxxxxxxxxxxxxxx
 
 ## 配置 `config.json`
 
-项目会读取根目录下的 `config.json`。如果文件不存在，程序会使用代码里的默认配置。
+复制仓库中的 `config.example.json` 为 `config.json` 后再按需修改。`config.json` 是本机配置，不提交到 Git；如果文件不存在，程序会使用代码里的默认配置。
  
 config.json 示例：
 ```json
 {
-  "save_dir": "D:/translate_tool/data",
+  "save_dir": "data",
   "provider": "youdao",
   "target_language": "zh-CHS",
   "source_language": "auto",
   "youdao_api_url": "https://openapi.youdao.com/api",
-  "hotkey": "Ctrl+Alt+T"
+  "hotkey": "Ctrl+Alt+T",
+  "keep_processed_requests": false
 }
 ```
 
@@ -116,6 +118,9 @@ config.json 示例：
 | `source_language` | 源语言，默认 `auto` 自动识别 |
 | `youdao_api_url` | 有道文本翻译 API 地址 |
 | `hotkey` | 翻译快捷键，例如 `Ctrl+Alt+T`、`Alt+T` |
+| `keep_processed_requests` | 是否保留成功请求原文；默认 `false`，减少敏感内容重复落盘 |
+
+`save_dir` 可以使用相对于项目目录的路径，例如 `data`，这样移动项目目录后无需修改盘符。
 
 如果想先测试程序流程，不调用有道 API，可以设置：
 
@@ -212,11 +217,11 @@ translator.ahk 确认 resident_app.py 常驻进程是否存活
   ↓
 translator.ahk 写入 data/requests/request_xxx.json
   ↓
-resident_app.py 轮询请求目录并读取请求
+resident_app.py 原子认领请求，避免多个进程重复处理
   ↓
 translate.py 读取 config.json 和 .env
   ↓
-translate.py 调用有道 API 或 mock 翻译
+后台工作线程调用有道 API 或 mock 翻译
   ↓
 translate.py 保存翻译记录
   ↓
@@ -235,9 +240,11 @@ resident_app.py 弹出结果窗口
 | `requirements.txt` | Python 依赖列表 |
 | `.env` | 有道 API Key，本地创建，不建议提交 |
 | `config.json` | 用户配置文件，可选 |
+| `config.example.json` | 可提交到仓库的配置模板 |
 | `data/` | 运行时数据目录，保存请求、日志和翻译记录 |
 | `data/requests/` | AHK 写入的翻译请求目录 |
-| `data/processed/` | 已处理或失败请求归档目录 |
+| `data/processing/` | 已被常驻进程认领、正在处理的请求 |
+| `data/processed/` | 失败请求；仅在配置开启时保留成功请求 |
 | `data/perf.log` | 性能日志 |
 | `data/resident.log` | 常驻进程日志 |
 

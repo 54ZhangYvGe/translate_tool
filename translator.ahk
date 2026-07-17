@@ -8,7 +8,7 @@ global DEFAULT_HOTKEY := "Ctrl+Alt+T"
 global DATA_DIR := BASE_DIR "\data"
 global REQUEST_DIR := DATA_DIR "\requests"
 global STATE_FILE := DATA_DIR "\app_state.json"
-global RESIDENT_VERSION := "2026-05-25-resident-keepalive-1"
+global RESIDENT_VERSION := "2026-07-17-resident-async-2"
 
 hotkeyText := LoadHotkeyFromConfig(CONFIG_PATH, DEFAULT_HOTKEY)
 ahkHotkey := ConvertHotkeyToAhk(hotkeyText)
@@ -22,36 +22,36 @@ try {
 
 
 TranslateSelectedText(*) {
-    oldClip := A_Clipboard
-    A_Clipboard := ""
+    ; ClipboardAll 可完整保留图片、文件和富文本等剪贴板格式。
+    oldClip := ClipboardAll()
+    try {
+        A_Clipboard := ""
+        Send "^c"
 
-    ; 复制当前选中文字
-    Send "^c"
+        if !ClipWait(1) {
+            MsgBox "没有获取到选中文字。请先选中文字，再按配置的翻译快捷键。", APP_TITLE
+            return
+        }
 
-    if !ClipWait(1) {
-        MsgBox "没有获取到选中文字。请先选中文字，再按配置的翻译快捷键。", APP_TITLE
+        selectedText := A_Clipboard
+        if Trim(selectedText) = "" {
+            MsgBox "选中的内容为空。", APP_TITLE
+            return
+        }
+
+        if !EnsureResidentApp() {
+            return
+        }
+
+        requestId := BuildRequestId()
+        WriteTranslateRequest(requestId, selectedText, "selection")
+        ToolTip "翻译请求已发送..."
+        SetTimer () => ToolTip(), -800
+    } catch Error as err {
+        MsgBox "翻译请求发送失败：`n`n" err.Message, APP_TITLE
+    } finally {
         A_Clipboard := oldClip
-        return
     }
-
-    selectedText := A_Clipboard
-
-    if Trim(selectedText) = "" {
-        MsgBox "选中的内容为空。", APP_TITLE
-        A_Clipboard := oldClip
-        return
-    }
-
-    EnsureResidentApp()
-
-    requestId := BuildRequestId()
-    WriteTranslateRequest(requestId, selectedText, "selection")
-
-    ToolTip "正在翻译，请稍候..."
-    Sleep 250
-    ToolTip
-
-    A_Clipboard := oldClip
 }
 
 
@@ -60,7 +60,7 @@ EnsureResidentApp() {
     DirCreate REQUEST_DIR
 
     if IsResidentAlive() {
-        return
+        return true
     }
 
     TryStopResidentIfVersionMismatch()
@@ -68,16 +68,22 @@ EnsureResidentApp() {
     pythonScript := BASE_DIR "\resident_app.py"
     pythonExe := ResolvePythonGuiExecutable()
     cmd := '"' pythonExe '" "' pythonScript '"'
-    Run cmd
+    try {
+        Run cmd, BASE_DIR, "Hide"
+    } catch Error as err {
+        MsgBox "无法启动常驻翻译进程：`n`n" err.Message, APP_TITLE
+        return false
+    }
 
-    Loop 20 {
+    Loop 40 {
         Sleep 200
         if IsResidentAlive() {
-            return
+            return true
         }
     }
 
     MsgBox "常驻翻译进程启动失败，请检查 resident_app.py 或 Python 环境。", APP_TITLE
+    return false
 }
 
 
@@ -89,6 +95,11 @@ IsResidentAlive() {
     modified := FileGetTime(STATE_FILE, "M")
     nowTs := DateDiff(A_Now, modified, "Seconds")
     if Abs(nowTs) > 10 {
+        return false
+    }
+
+    pid := GetResidentPid()
+    if pid = "" || !ProcessExist(pid) {
         return false
     }
 
@@ -200,6 +211,10 @@ JsonEscape(text) {
 ResolvePythonGuiExecutable() {
     localAppData := EnvGet("LocalAppData")
     candidates := [
+        BASE_DIR "\.venv\Scripts\pythonw.exe",
+        BASE_DIR "\venv\Scripts\pythonw.exe",
+        BASE_DIR "\.venv\Scripts\python.exe",
+        BASE_DIR "\venv\Scripts\python.exe",
         localAppData "\Programs\Python\Python313\pythonw.exe",
         localAppData "\Programs\Python\Python312\pythonw.exe",
         localAppData "\Programs\Python\Python311\pythonw.exe",

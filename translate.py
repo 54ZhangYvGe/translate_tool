@@ -26,6 +26,13 @@ ENV_PATH = BASE_DIR / ".env"
 PERF_LOG_PATH = BASE_DIR / "data" / "perf.log"
 
 
+def _require_non_empty_string(config, key):
+    value = config.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"配置项 {key} 必须是非空字符串")
+    return value.strip()
+
+
 def append_perf_log(stage, detail):
     PERF_LOG_PATH.parent.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -35,21 +42,49 @@ def append_perf_log(stage, detail):
 
 def load_config():
     default_config = {
-        "save_dir": "D:/translate_tool/data",
+        "save_dir": str(BASE_DIR / "data"),
         "provider": "youdao",
         "target_language": "zh-CHS",
         "source_language": "auto",
         "youdao_api_url": "https://openapi.youdao.com/api",
-        "hotkey": "Ctrl+Alt+T"
+        "hotkey": "Ctrl+Alt+T",
+        "keep_processed_requests": False,
     }
 
     if not CONFIG_PATH.exists():
         return default_config
 
     with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        user_config = json.load(f)
+        try:
+            user_config = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise ValueError(
+                f"配置文件格式错误：{CONFIG_PATH}（第 {exc.lineno} 行，第 {exc.colno} 列）"
+            ) from exc
+
+    if not isinstance(user_config, dict):
+        raise ValueError(f"配置文件根节点必须是 JSON 对象：{CONFIG_PATH}")
 
     default_config.update(user_config)
+    provider = _require_non_empty_string(default_config, "provider").lower()
+    if provider not in {"mock", "youdao"}:
+        raise ValueError(f"不支持的 provider：{provider}")
+    default_config["provider"] = provider
+    save_dir = Path(_require_non_empty_string(default_config, "save_dir")).expanduser()
+    if not save_dir.is_absolute():
+        save_dir = BASE_DIR / save_dir
+    default_config["save_dir"] = str(save_dir)
+    default_config["source_language"] = _require_non_empty_string(
+        default_config, "source_language"
+    )
+    default_config["target_language"] = _require_non_empty_string(
+        default_config, "target_language"
+    )
+    default_config["youdao_api_url"] = _require_non_empty_string(
+        default_config, "youdao_api_url"
+    )
+    if not isinstance(default_config.get("keep_processed_requests"), bool):
+        raise ValueError("配置项 keep_processed_requests 必须是 true 或 false")
     return default_config
 
 
@@ -106,12 +141,12 @@ def translate_by_youdao(text, config):
     app_secret = os.getenv("YOUDAO_APP_SECRET", "").strip()
 
     if not app_key:
-        raise RuntimeError("没有配置 YOUDAO_APP_KEY，请检查 D:/translate_tool/.env")
+        raise RuntimeError(f"没有配置 YOUDAO_APP_KEY，请检查 {ENV_PATH}")
 
     if not app_secret:
-        raise RuntimeError("没有配置 YOUDAO_APP_SECRET，请检查 D:/translate_tool/.env")
+        raise RuntimeError(f"没有配置 YOUDAO_APP_SECRET，请检查 {ENV_PATH}")
 
-    url = config.get("youdao_api_url", "https://openapi.youdao.com/api").strip()
+    url = _require_non_empty_string(config, "youdao_api_url")
 
     source_language = config.get("source_language", "auto")
     target_language = config.get("target_language", "zh-CHS")
@@ -135,24 +170,30 @@ def translate_by_youdao(text, config):
         "curtime": curtime
     }
 
-    resp = requests.post(url, data=data, timeout=30)
+    try:
+        resp = requests.post(url, data=data, timeout=(5, 30))
+    except requests.Timeout as exc:
+        raise RuntimeError("翻译服务请求超时，请稍后重试") from exc
+    except requests.RequestException as exc:
+        raise RuntimeError(f"无法连接翻译服务：{exc}") from exc
 
     if resp.status_code != 200:
         raise RuntimeError(
             f"有道 API 请求失败。\n"
             f"HTTP {resp.status_code}\n"
-            f"{resp.text}"
+            "请稍后重试，或检查翻译服务配置。"
         )
 
-    result = resp.json()
+    try:
+        result = resp.json()
+    except requests.JSONDecodeError as exc:
+        raise RuntimeError("翻译服务返回了无法解析的数据") from exc
 
     error_code = str(result.get("errorCode", ""))
 
     if error_code != "0":
-        raise RuntimeError(
-            "有道 API 返回错误：\n"
-            + json.dumps(result, ensure_ascii=False, indent=2)
-        )
+        error_message = result.get("msg") or result.get("message") or "请检查账号额度和语言配置"
+        raise RuntimeError(f"有道 API 返回错误：{error_code}\n{error_message}")
 
     # 有道主翻译结果，一般在 translation 字段
     translation_list = result.get("translation", [])
@@ -174,7 +215,10 @@ def translate_by_youdao(text, config):
 
 
 def translate_text(text, config):
-    provider = config.get("provider", "youdao").lower()
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("待翻译文本不能为空")
+
+    provider = _require_non_empty_string(config, "provider").lower()
 
     if provider == "mock":
         return translate_mock(text)
@@ -186,7 +230,7 @@ def translate_text(text, config):
 
 
 def save_record(source, translation, config):
-    save_dir = Path(config.get("save_dir", "D:/translate_tool/data"))
+    save_dir = Path(config.get("save_dir") or BASE_DIR / "data").expanduser()
     save_dir.mkdir(parents=True, exist_ok=True)
 
     date_str = datetime.now().strftime("%Y-%m-%d")

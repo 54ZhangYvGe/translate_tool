@@ -1,0 +1,9 @@
+{
+  "save_dir": "data",
+  "provider": "youdao",
+  "target_language": "zh-CHS",
+  "source_language": "auto",
+  "hotkey": "Alt+T",
+  "youdao_api_url": "https://openapi.youdao.com/api",
+  "keep_processed_requests": false
+}

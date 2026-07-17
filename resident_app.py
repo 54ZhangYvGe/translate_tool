@@ -6,7 +6,17 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, Qt, QUrl
+from PySide6.QtCore import (
+    QLockFile,
+    QObject,
+    QRunnable,
+    QThreadPool,
+    QTimer,
+    Qt,
+    QUrl,
+    Signal,
+    Slot,
+)
 from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -27,10 +37,12 @@ from translate import BASE_DIR, append_perf_log, load_config, save_record, trans
 
 DATA_DIR = BASE_DIR / "data"
 REQUEST_DIR = DATA_DIR / "requests"
+PROCESSING_DIR = DATA_DIR / "processing"
 PROCESSED_DIR = DATA_DIR / "processed"
 STATE_PATH = DATA_DIR / "app_state.json"
+LOCK_PATH = DATA_DIR / "resident.lock"
 RESIDENT_LOG_PATH = DATA_DIR / "resident.log"
-RESIDENT_VERSION = "2026-05-25-resident-keepalive-1"
+RESIDENT_VERSION = "2026-07-17-resident-async-2"
 POLL_INTERVAL_MS = 150
 HEARTBEAT_INTERVAL_MS = 2000
 STALE_REQUEST_SECONDS = 300
@@ -43,7 +55,54 @@ def append_resident_log(message):
         f.write(f"[{timestamp}] {message}\n")
 
 
+class WorkerSignals(QObject):
+    finished = Signal(object)
+    failed = Signal(object)
+
+
+class TranslationWorker(QRunnable):
+    def __init__(self, source_text, source_label, request_id, request_path=None):
+        super().__init__()
+        self.source_text = source_text
+        self.source_label = source_label
+        self.request_id = request_id
+        self.request_path = request_path
+        self.signals = WorkerSignals()
+
+    @Slot()
+    def run(self):
+        started_at = time.perf_counter()
+        try:
+            config = load_config()
+            translation = translate_text(self.source_text, config)
+            saved_file = save_record(self.source_text, translation, config)
+            self.signals.finished.emit(
+                {
+                    "source_text": self.source_text,
+                    "source_label": self.source_label,
+                    "request_id": self.request_id,
+                    "request_path": self.request_path,
+                    "translation": translation,
+                    "saved_file": saved_file,
+                    "config": config,
+                    "elapsed_ms": (time.perf_counter() - started_at) * 1000,
+                }
+            )
+        except Exception as exc:
+            self.signals.failed.emit(
+                {
+                    "source_label": self.source_label,
+                    "request_id": self.request_id,
+                    "request_path": self.request_path,
+                    "error": str(exc) or exc.__class__.__name__,
+                    "traceback": traceback.format_exc(),
+                }
+            )
+
+
 class ResultWindow(QWidget):
+    manual_translation_requested = Signal(str)
+
     def __init__(self):
         super().__init__()
         self.config = load_config()
@@ -82,12 +141,8 @@ class ResultWindow(QWidget):
                 padding: 8px 14px;
                 min-width: 88px;
             }
-            QPushButton:hover {
-                background: #ddd1bc;
-            }
-            QPushButton:pressed {
-                background: #d2c1a4;
-            }
+            QPushButton:hover { background: #ddd1bc; }
+            QPushButton:pressed { background: #d2c1a4; }
             """
         )
 
@@ -112,7 +167,7 @@ class ResultWindow(QWidget):
 
         title_label = QLabel("翻译结果")
         title_label.setFont(QFont("Microsoft YaHei UI", 11, QFont.Bold))
-        subtitle_label = QLabel("常驻模式已启用 · Enter / Esc 可直接关闭")
+        subtitle_label = QLabel("后台翻译已启用 · Enter / Esc 可隐藏窗口")
         subtitle_label.setStyleSheet("color: #7a7468; font-size: 11px;")
 
         header_text_layout.addWidget(title_label)
@@ -154,7 +209,6 @@ class ResultWindow(QWidget):
         button_row.addStretch(1)
         button_row.addWidget(close_btn)
         layout.addLayout(button_row)
-
         self.resize(560, 340)
 
     def keyPressEvent(self, event):
@@ -182,28 +236,23 @@ class ResultWindow(QWidget):
 
     def manual_translate(self):
         text, ok = QInputDialog.getMultiLineText(
-            self,
-            "手动输入翻译",
-            "请输入要翻译的英文/文本：",
-            "",
+            self, "手动输入翻译", "请输入要翻译的英文/文本：", ""
         )
         if not ok:
             return
-
         source = text.strip()
         if not source:
             QMessageBox.information(self, "translate_tool", "输入内容为空。")
             return
+        self.manual_translation_requested.emit(source)
 
-        self.config = load_config()
-        try:
-            translation = translate_text(source, self.config)
-            saved_file = save_record(source, translation, self.config)
-        except Exception:
-            QMessageBox.critical(self, "翻译失败", traceback.format_exc())
-            return
-
-        self.update_result(source, translation, saved_file)
+    def show_loading(self):
+        self.editor.setPlainText("正在翻译，请稍候……")
+        self.path_label.setText("")
+        if not self.isVisible():
+            self.show()
+        self.raise_()
+        self.activateWindow()
 
     def update_result(self, source_text, translation, saved_file):
         self.current_source = source_text
@@ -219,104 +268,214 @@ class ResultWindow(QWidget):
         self.activateWindow()
 
 
-class ResidentApp:
-    def __init__(self):
-        self.app = QApplication.instance() or QApplication(sys.argv)
+class ResidentApp(QObject):
+    def __init__(self, instance_lock, app):
+        super().__init__()
+        self.instance_lock = instance_lock
+        self.started_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.active_worker = None
+        self.active_request = None
+        self.app = app
         self.app.setQuitOnLastWindowClosed(False)
-        REQUEST_DIR.mkdir(parents=True, exist_ok=True)
-        PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
-        self.window = ResultWindow()
+        for directory in (REQUEST_DIR, PROCESSING_DIR, PROCESSED_DIR):
+            directory.mkdir(parents=True, exist_ok=True)
+        self.recover_interrupted_requests()
 
-        self.poll_timer = QTimer()
+        self.window = ResultWindow()
+        self.window.manual_translation_requested.connect(self.process_manual_request)
+        self.thread_pool = QThreadPool.globalInstance()
+        self.thread_pool.setMaxThreadCount(1)
+
+        self.poll_timer = QTimer(self)
         self.poll_timer.timeout.connect(self.process_pending_requests)
         self.poll_timer.start(POLL_INTERVAL_MS)
 
-        self.heartbeat_timer = QTimer()
+        self.heartbeat_timer = QTimer(self)
         self.heartbeat_timer.timeout.connect(self.write_state)
         self.heartbeat_timer.start(HEARTBEAT_INTERVAL_MS)
 
+        self.app.aboutToQuit.connect(self.cleanup)
         self.write_state()
-        append_resident_log("resident app started")
+        append_resident_log(f"resident app started | pid={os.getpid()} | version={RESIDENT_VERSION}")
+
+    def recover_interrupted_requests(self):
+        for processing_path in PROCESSING_DIR.glob("request_*.json"):
+            target = REQUEST_DIR / processing_path.name
+            if target.exists():
+                target = REQUEST_DIR / (
+                    f"{processing_path.stem}_{int(time.time() * 1000)}{processing_path.suffix}"
+                )
+            try:
+                processing_path.replace(target)
+                append_resident_log(f"recovered interrupted request: {processing_path.name}")
+            except OSError:
+                append_resident_log(
+                    f"recover request failed: {processing_path.name}\n{traceback.format_exc()}"
+                )
 
     def write_state(self):
         state = {
             "pid": os.getpid(),
             "version": RESIDENT_VERSION,
-            "started_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "started_at": self.started_at,
             "heartbeat_ts": time.time(),
         }
-        with open(STATE_PATH, "w", encoding="utf-8") as f:
+        temp_path = STATE_PATH.with_name(f"{STATE_PATH.name}.{os.getpid()}.tmp")
+        with open(temp_path, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, STATE_PATH)
 
     def process_pending_requests(self):
-        request_files = sorted(REQUEST_DIR.glob("request_*.json"), key=lambda p: p.stat().st_mtime)
+        if self.active_worker is not None:
+            return
+
+        request_files = list(REQUEST_DIR.glob("request_*.json"))
+        request_files.sort(key=lambda path: path.stat().st_mtime if path.exists() else float("inf"))
         for request_file in request_files:
-            self.process_request(request_file)
+            claimed_path = PROCESSING_DIR / request_file.name
+            try:
+                request_file.replace(claimed_path)
+            except FileNotFoundError:
+                continue
+            except OSError:
+                append_resident_log(
+                    f"claim request failed: {request_file.name}\n{traceback.format_exc()}"
+                )
+                continue
 
-    def process_request(self, request_file):
-        started_at = time.perf_counter()
+            try:
+                with open(claimed_path, "r", encoding="utf-8-sig") as f:
+                    payload = json.load(f)
+                text = str(payload.get("text", "")).strip()
+                source = str(payload.get("source", "selection")).strip() or "selection"
+                request_id = str(payload.get("id", claimed_path.stem)).strip() or claimed_path.stem
+                if not text:
+                    raise RuntimeError("请求内容为空")
+                if time.time() - claimed_path.stat().st_mtime > STALE_REQUEST_SECONDS:
+                    raise RuntimeError("请求等待时间过长，已停止处理")
+            except Exception as exc:
+                append_resident_log(
+                    f"invalid request: {claimed_path.name}\n{traceback.format_exc()}"
+                )
+                self.archive_failed_request(claimed_path)
+                QMessageBox.critical(self.window, "翻译失败", str(exc))
+                continue
+
+            self.start_translation(text, source, request_id, claimed_path)
+            return
+
+    @Slot(str)
+    def process_manual_request(self, text):
+        if self.active_worker is not None:
+            QMessageBox.information(self.window, "translate_tool", "已有翻译任务正在进行，请稍候。")
+            return
+        request_id = f"manual_{int(time.time() * 1000)}"
+        self.start_translation(text, "manual", request_id)
+
+    def start_translation(self, text, source, request_id, request_path=None):
+        self.active_request = request_path
+        self.window.show_loading()
+        worker = TranslationWorker(text, source, request_id, request_path)
+        worker.signals.finished.connect(self.translation_finished)
+        worker.signals.failed.connect(self.translation_failed)
+        self.active_worker = worker
+        self.thread_pool.start(worker)
+
+    @Slot(object)
+    def translation_finished(self, result):
+        self.window.config = result["config"]
+        self.window.update_result(
+            result["source_text"], result["translation"], result["saved_file"]
+        )
+        request_path = result["request_path"]
+        if request_path:
+            self.finalize_successful_request(
+                Path(request_path), bool(result["config"].get("keep_processed_requests", False))
+            )
+        append_perf_log(
+            "resident_request",
+            f"id={result['request_id']} | source={result['source_label']} | "
+            f"total={result['elapsed_ms']:.0f}ms",
+        )
+        self.finish_active_job()
+
+    @Slot(object)
+    def translation_failed(self, result):
+        append_resident_log(
+            f"process request failed: {result['request_id']}\n{result['traceback']}"
+        )
+        if result["request_path"]:
+            self.archive_failed_request(Path(result["request_path"]))
+        QMessageBox.critical(self.window, "翻译失败", result["error"])
+        self.finish_active_job()
+
+    def finalize_successful_request(self, request_path, keep_processed):
         try:
-            with open(request_file, "r", encoding="utf-8-sig") as f:
-                payload = json.load(f)
-
-            text = str(payload.get("text", "")).strip()
-            source = str(payload.get("source", "selection")).strip() or "selection"
-            request_id = str(payload.get("id", request_file.stem)).strip() or request_file.stem
-
-            if not text:
-                raise RuntimeError("请求内容为空")
-
-            if time.time() - request_file.stat().st_mtime > STALE_REQUEST_SECONDS:
-                append_resident_log(f"skip stale request: {request_file.name}")
-                request_file.unlink(missing_ok=True)
-                return
-
-            config = load_config()
-            translation = translate_text(text, config)
-            saved_file = save_record(text, translation, config)
-            self.window.config = config
-            self.window.update_result(text, translation, saved_file)
-
-            archive_path = PROCESSED_DIR / request_file.name
-            if archive_path.exists():
-                archive_path.unlink()
-            request_file.replace(archive_path)
-
-            total_elapsed_ms = (time.perf_counter() - started_at) * 1000
-            append_perf_log(
-                "resident_request",
-                f"id={request_id} | source={source} | total={total_elapsed_ms:.0f}ms",
-            )
-        except json.JSONDecodeError:
-            append_resident_log(
-                f"process request failed (json decode / possible BOM issue): {request_file.name}\n"
-                f"{traceback.format_exc()}"
-            )
-            try:
-                bad_path = PROCESSED_DIR / f"failed_{request_file.name}"
-                if bad_path.exists():
-                    bad_path.unlink()
-                request_file.replace(bad_path)
-            except Exception:
-                pass
+            if keep_processed:
+                target = self.unique_archive_path(request_path.name)
+                request_path.replace(target)
+            else:
+                request_path.unlink(missing_ok=True)
         except Exception:
-            append_resident_log(f"process request failed: {request_file.name}\n{traceback.format_exc()}")
-            try:
-                bad_path = PROCESSED_DIR / f"failed_{request_file.name}"
-                if bad_path.exists():
-                    bad_path.unlink()
-                request_file.replace(bad_path)
-            except Exception:
-                pass
+            append_resident_log(
+                f"finalize request failed: {request_path.name}\n{traceback.format_exc()}"
+            )
+
+    def archive_failed_request(self, request_path):
+        try:
+            target = self.unique_archive_path(f"failed_{request_path.name}")
+            request_path.replace(target)
+        except Exception:
+            append_resident_log(
+                f"archive failed request failed: {request_path.name}\n{traceback.format_exc()}"
+            )
+
+    @staticmethod
+    def unique_archive_path(file_name):
+        target = PROCESSED_DIR / file_name
+        if not target.exists():
+            return target
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        return PROCESSED_DIR / f"{target.stem}_{timestamp}{target.suffix}"
+
+    def finish_active_job(self):
+        self.active_worker = None
+        self.active_request = None
+        QTimer.singleShot(0, self.process_pending_requests)
+
+    def cleanup(self):
+        try:
+            if STATE_PATH.exists():
+                state = json.loads(STATE_PATH.read_text(encoding="utf-8"))
+                if state.get("pid") == os.getpid():
+                    STATE_PATH.unlink(missing_ok=True)
+        except Exception:
+            pass
+        self.instance_lock.unlock()
 
     def run(self):
         return self.app.exec()
 
 
 def main():
-    resident = ResidentApp()
-    sys.exit(resident.run())
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    app = QApplication.instance() or QApplication(sys.argv)
+    instance_lock = QLockFile(str(LOCK_PATH))
+    instance_lock.setStaleLockTime(10000)
+    if not instance_lock.tryLock(0):
+        append_resident_log("resident app start skipped: another instance owns the lock")
+        return 0
+
+    try:
+        resident = ResidentApp(instance_lock, app)
+        return resident.run()
+    except Exception:
+        append_resident_log(f"resident app startup failed\n{traceback.format_exc()}")
+        instance_lock.unlock()
+        raise
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())
