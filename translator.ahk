@@ -8,7 +8,7 @@ global DEFAULT_HOTKEY := "Ctrl+Alt+T"
 global DATA_DIR := BASE_DIR "\data"
 global REQUEST_DIR := DATA_DIR "\requests"
 global STATE_FILE := DATA_DIR "\app_state.json"
-global RESIDENT_VERSION := "2026-07-17-resident-async-2"
+global RESIDENT_VERSION := "2026-07-17-resident-window-fix-3"
 
 hotkeyText := LoadHotkeyFromConfig(CONFIG_PATH, DEFAULT_HOTKEY)
 ahkHotkey := ConvertHotkeyToAhk(hotkeyText)
@@ -47,6 +47,8 @@ TranslateSelectedText(*) {
         WriteTranslateRequest(requestId, selectedText, "selection")
         ToolTip "翻译请求已发送..."
         SetTimer () => ToolTip(), -800
+        ; Windows 可能限制后台进程抢占焦点，由热键进程主动激活结果窗口。
+        SetTimer ActivateResultWindow, -50
     } catch Error as err {
         MsgBox "翻译请求发送失败：`n`n" err.Message, APP_TITLE
     } finally {
@@ -69,7 +71,8 @@ EnsureResidentApp() {
     pythonExe := ResolvePythonGuiExecutable()
     cmd := '"' pythonExe '" "' pythonScript '"'
     try {
-        Run cmd, BASE_DIR, "Hide"
+        ; 不要使用 Hide：它会让随后创建的 Qt 结果窗口保持隐藏。
+        Run cmd, BASE_DIR
     } catch Error as err {
         MsgBox "无法启动常驻翻译进程：`n`n" err.Message, APP_TITLE
         return false
@@ -84,6 +87,20 @@ EnsureResidentApp() {
 
     MsgBox "常驻翻译进程启动失败，请检查 resident_app.py 或 Python 环境。", APP_TITLE
     return false
+}
+
+
+ActivateResultWindow() {
+    hwnd := WinWait("翻译结果", , 35)
+    if !hwnd {
+        return
+    }
+
+    try {
+        WinShow "ahk_id " hwnd
+        WinRestore "ahk_id " hwnd
+        WinActivate "ahk_id " hwnd
+    }
 }
 
 

@@ -42,7 +42,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 STATE_PATH = DATA_DIR / "app_state.json"
 LOCK_PATH = DATA_DIR / "resident.lock"
 RESIDENT_LOG_PATH = DATA_DIR / "resident.log"
-RESIDENT_VERSION = "2026-07-17-resident-async-2"
+RESIDENT_VERSION = "2026-07-17-resident-window-fix-3"
 POLL_INTERVAL_MS = 150
 HEARTBEAT_INTERVAL_MS = 2000
 STALE_REQUEST_SECONDS = 300
@@ -249,10 +249,7 @@ class ResultWindow(QWidget):
     def show_loading(self):
         self.editor.setPlainText("正在翻译，请稍候……")
         self.path_label.setText("")
-        if not self.isVisible():
-            self.show()
-        self.raise_()
-        self.activateWindow()
+        self.bring_to_front()
 
     def update_result(self, source_text, translation, saved_file):
         self.current_source = source_text
@@ -260,12 +257,19 @@ class ResultWindow(QWidget):
         self.current_saved_file = Path(saved_file)
         self.editor.setPlainText(translation.strip())
         self.path_label.setText(str(saved_file))
+        self.bring_to_front()
+
+    def bring_to_front(self):
         if self.isMinimized():
             self.showNormal()
-        elif not self.isVisible():
-            self.show()
+        self.show()
+        self.setWindowState(self.windowState() & ~Qt.WindowMinimized | Qt.WindowActive)
         self.raise_()
         self.activateWindow()
+        QApplication.alert(self, 0)
+        append_resident_log(
+            f"result window shown | visible={self.isVisible()} | win_id={int(self.winId())}"
+        )
 
 
 class ResidentApp(QObject):

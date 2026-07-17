@@ -268,6 +268,10 @@ resident_app.py 弹出结果窗口
 - 是否真的选中了文本。
 - `config.json` 中的 `hotkey` 写法是否正确。
 
+如果提示“翻译请求已发送”但结果窗口没有出现，请先退出并重新运行
+`translator.ahk`，确保常驻进程加载的是最新版本；随后检查
+`data/resident.log` 中是否出现 `result window shown`。
+
 ### 3. 提示没有配置 `YOUDAO_APP_KEY` 或 `YOUDAO_APP_SECRET`
 
 说明 `.env` 文件不存在，或字段名不正确。
