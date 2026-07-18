@@ -1,6 +1,38 @@
-# translate_tool
+# translate_tool — Windows 划词翻译工具
 
-一个 Windows 桌面划词翻译工具：选中文本后按快捷键，自动调用翻译接口，弹出翻译结果窗口，并把原文和译文按日期保存到本地文件。
+![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
+![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
+![AutoHotkey](https://img.shields.io/badge/AutoHotkey-v2-334455)
+![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52)
+
+轻量、快速的 Windows 桌面划词翻译工具：选中文本，按下全局快捷键（默认 `Alt + T`），即可调用翻译接口并弹出结果，同时按日期保存翻译记录。
+
+> A lightweight Windows selection translator powered by AutoHotkey v2, Python and PySide6. Select text, press a global hotkey, and get the translation in a native desktop window.
+
+![translate_tool 翻译结果窗口](assets/translate-result.png)
+
+适合需要在浏览器、PDF、Office、编辑器和桌面软件中快速翻译英文的用户。关键词：Windows translator、selection translation、划词翻译、AutoHotkey translator、Youdao API、PySide6 desktop app。
+
+## 为什么使用 translate_tool？
+
+- **全局快捷键**：无需切换到翻译网站，选中文字后直接翻译。
+- **响应迅速**：Python/PySide6 常驻后台，避免重复冷启动。
+- **原生弹窗**：结果窗口支持复制译文、手动输入和打开历史记录。
+- **本地历史**：原文和译文按日期保存为 TXT，数据目录由你控制。
+- **可配置**：支持快捷键、源语言、目标语言、保存目录与 mock 模式。
+
+## 快速开始
+
+```powershell
+git clone https://github.com/54ZhangYvGe/translate_tool.git
+cd translate_tool
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+Copy-Item config.example.json config.json
+```
+
+首次体验可把 `config.json` 中的 `provider` 改为 `mock`，然后双击
+`translator.ahk`；使用真实翻译时，再按照下文配置有道智云 API 密钥。
 
 当前项目主要由三部分组成：
 
@@ -45,7 +77,6 @@
 
 ### 4. 有道智云 API
 
-******当前有道智云新人登录注册可以免费获得50元的token，实测非常的爽。
 如果使用真实翻译，需要准备有道智云文本翻译应用的：
 
 - 应用 ID，即 `YOUDAO_APP_KEY`
@@ -103,7 +134,7 @@ config.json 示例：
   "target_language": "zh-CHS",
   "source_language": "auto",
   "youdao_api_url": "https://openapi.youdao.com/api",
-  "hotkey": "Ctrl+Alt+T",
+  "hotkey": "Alt+T",
   "keep_processed_requests": false
 }
 ```
@@ -141,7 +172,7 @@ config.json 示例：
 3. 按配置的快捷键，默认是：
 
    ```text
-   Ctrl+Alt+T
+   Alt+T
    ```
 
 4. 等待翻译结果窗口弹出。

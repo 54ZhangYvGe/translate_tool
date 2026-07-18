@@ -47,7 +47,7 @@ def load_config():
         "target_language": "zh-CHS",
         "source_language": "auto",
         "youdao_api_url": "https://openapi.youdao.com/api",
-        "hotkey": "Ctrl+Alt+T",
+        "hotkey": "Alt+T",
         "keep_processed_requests": False,
     }
 

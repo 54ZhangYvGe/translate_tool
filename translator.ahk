@@ -4,7 +4,7 @@
 global APP_TITLE := "translate_tool"
 global BASE_DIR := A_ScriptDir
 global CONFIG_PATH := BASE_DIR "\config.json"
-global DEFAULT_HOTKEY := "Ctrl+Alt+T"
+global DEFAULT_HOTKEY := "Alt+T"
 global DATA_DIR := BASE_DIR "\data"
 global REQUEST_DIR := DATA_DIR "\requests"
 global STATE_FILE := DATA_DIR "\app_state.json"
