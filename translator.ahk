@@ -8,7 +8,7 @@ global DEFAULT_HOTKEY := "Alt+T"
 global DATA_DIR := BASE_DIR "\data"
 global REQUEST_DIR := DATA_DIR "\requests"
 global STATE_FILE := DATA_DIR "\app_state.json"
-global RESIDENT_VERSION := "2026-07-17-resident-window-fix-3"
+global RESIDENT_VERSION := "2026-07-18-apple-ui-3"
 
 hotkeyText := LoadHotkeyFromConfig(CONFIG_PATH, DEFAULT_HOTKEY)
 ahkHotkey := ConvertHotkeyToAhk(hotkeyText)

@@ -17,10 +17,18 @@ from PySide6.QtCore import (
     Signal,
     Slot,
 )
-from PySide6.QtGui import QDesktopServices, QFont, QGuiApplication
+from PySide6.QtGui import (
+    QColor,
+    QDesktopServices,
+    QFont,
+    QGuiApplication,
+    QTextBlockFormat,
+    QTextCursor,
+)
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
+    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QInputDialog,
     QLabel,
@@ -42,7 +50,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 STATE_PATH = DATA_DIR / "app_state.json"
 LOCK_PATH = DATA_DIR / "resident.lock"
 RESIDENT_LOG_PATH = DATA_DIR / "resident.log"
-RESIDENT_VERSION = "2026-07-17-resident-window-fix-3"
+RESIDENT_VERSION = "2026-07-18-apple-ui-3"
 POLL_INTERVAL_MS = 150
 HEARTBEAT_INTERVAL_MS = 2000
 STALE_REQUEST_SECONDS = 300
@@ -114,61 +122,132 @@ class ResultWindow(QWidget):
     def setup_ui(self):
         app = QApplication.instance()
         self.setWindowTitle("翻译结果")
-        self.setMinimumWidth(420)
+        self.setMinimumSize(460, 320)
         self.setWindowIcon(app.style().standardIcon(QStyle.SP_FileDialogContentsView))
         self.setStyleSheet(
             """
             QWidget {
-                background: #f7f3ea;
-                color: #2b2b2b;
-                font-family: 'Microsoft YaHei UI';
+                background: #f5f5f7;
+                color: #1d1d1f;
+                font-family: 'Segoe UI', 'Microsoft YaHei UI';
+                font-size: 12px;
             }
             QFrame#HeaderCard {
-                background: #efe7d8;
-                border: 1px solid #ddd2bf;
-                border-radius: 12px;
+                background: rgba(255, 255, 255, 242);
+                border: 1px solid #e1e1e6;
+                border-radius: 16px;
+            }
+            QFrame#HeaderCard QLabel {
+                background: transparent;
+            }
+            QFrame#HeaderCard QLabel#HeaderIcon {
+                background: qlineargradient(
+                    x1: 0, y1: 0, x2: 1, y2: 1,
+                    stop: 0 #38a0ff, stop: 1 #0068e8
+                );
+                color: #ffffff;
+                border: 1px solid rgba(255, 255, 255, 115);
+                border-radius: 11px;
+                font-size: 17px;
+                font-weight: 700;
+            }
+            QLabel#TitleLabel {
+                color: #1d1d1f;
+                font-size: 15px;
+                font-weight: 600;
+            }
+            QLabel#SubtitleLabel, QLabel#PathLabel {
+                background: transparent;
+                color: #6e6e73;
+                font-size: 11px;
+            }
+            QLabel#StatusLabel {
+                background: #e8f2ff;
+                color: #0066cc;
+                border-radius: 8px;
+                padding: 3px 8px;
+                font-size: 11px;
+                font-weight: 600;
+            }
+            QLabel#StatusLabel[status="loading"] {
+                background: #fff4dc;
+                color: #9a6700;
+            }
+            QLabel#StatusLabel[status="success"] {
+                background: #e9f7ed;
+                color: #237a3b;
             }
             QTextEdit {
-                background: #fffdf8;
-                border: 1px solid #d8d0c2;
-                border-radius: 10px;
-                padding: 12px;
+                background: #ffffff;
+                color: #1d1d1f;
+                font-size: 14px;
+                border: 1px solid #e2e2e7;
+                border-radius: 16px;
+                padding: 16px;
+                selection-background-color: #b8d9ff;
+                selection-color: #1d1d1f;
             }
             QPushButton {
-                background: #e7dfd1;
-                border: 1px solid #c8baa2;
-                border-radius: 8px;
-                padding: 8px 14px;
-                min-width: 88px;
+                background: #e8e8ed;
+                color: #1d1d1f;
+                border: none;
+                border-radius: 10px;
+                padding: 9px 15px;
+                min-width: 82px;
+                font-weight: 500;
             }
-            QPushButton:hover { background: #ddd1bc; }
-            QPushButton:pressed { background: #d2c1a4; }
+            QPushButton:hover { background: #dddde3; }
+            QPushButton:pressed { background: #d1d1d6; }
+            QPushButton:focus {
+                border: 2px solid #80bfff;
+                padding: 7px 13px;
+            }
+            QPushButton:disabled {
+                background: #ededf0;
+                color: #a1a1a6;
+            }
+            QPushButton#PrimaryButton {
+                background: qlineargradient(
+                    x1: 0, y1: 0, x2: 0, y2: 1,
+                    stop: 0 #198cff, stop: 1 #0071e3
+                );
+                color: #ffffff;
+                font-weight: 600;
+            }
+            QPushButton#PrimaryButton:hover { background: #0875df; }
+            QPushButton#PrimaryButton:pressed { background: #0062cc; }
+            QPushButton#CloseButton {
+                background: transparent;
+                color: #6e6e73;
+            }
+            QPushButton#CloseButton:hover { background: #e8e8ed; }
             """
         )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(16, 14, 16, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(14)
 
         header_card = QFrame()
         header_card.setObjectName("HeaderCard")
         header_layout = QHBoxLayout(header_card)
-        header_layout.setContentsMargins(12, 10, 12, 10)
-        header_layout.setSpacing(10)
+        header_layout.setContentsMargins(15, 13, 15, 13)
+        header_layout.setSpacing(12)
 
-        header_icon = QLabel("✨")
-        header_icon.setFont(QFont("Segoe UI Emoji", 18))
+        header_icon = QLabel("译")
+        header_icon.setObjectName("HeaderIcon")
         header_icon.setAlignment(Qt.AlignCenter)
-        header_icon.setFixedWidth(28)
+        header_icon.setFixedSize(38, 38)
 
         header_text_layout = QVBoxLayout()
         header_text_layout.setContentsMargins(0, 0, 0, 0)
         header_text_layout.setSpacing(2)
 
         title_label = QLabel("翻译结果")
-        title_label.setFont(QFont("Microsoft YaHei UI", 11, QFont.Bold))
-        subtitle_label = QLabel("后台翻译已启用 · Enter / Esc 可隐藏窗口")
-        subtitle_label.setStyleSheet("color: #7a7468; font-size: 11px;")
+        title_label.setObjectName("TitleLabel")
+        hotkey_text = str(self.config.get("hotkey", "Alt+T")).replace("+", " + ")
+        subtitle_label = QLabel(f"{hotkey_text} 翻译 · Enter / Esc 隐藏")
+        subtitle_label.setObjectName("SubtitleLabel")
 
         header_text_layout.addWidget(title_label)
         header_text_layout.addWidget(subtitle_label)
@@ -179,37 +258,76 @@ class ResultWindow(QWidget):
 
         self.editor = QTextEdit()
         self.editor.setReadOnly(True)
-        self.editor.setMinimumHeight(170)
-        self.editor.setFont(QFont("Microsoft YaHei UI", 13))
+        self.editor.setMinimumHeight(190)
+        editor_font = QFont(app.font())
+        editor_font.setPointSize(14)
+        self.editor.setFont(editor_font)
+        self.editor.setAccessibleName("翻译结果正文")
+        editor_shadow = QGraphicsDropShadowEffect(self.editor)
+        editor_shadow.setBlurRadius(24)
+        editor_shadow.setOffset(0, 5)
+        editor_shadow.setColor(QColor(20, 20, 30, 28))
+        self.editor.setGraphicsEffect(editor_shadow)
         layout.addWidget(self.editor)
 
+        meta_row = QHBoxLayout()
+        meta_row.setSpacing(8)
+        self.status_label = QLabel("等待翻译")
+        self.status_label.setObjectName("StatusLabel")
+        self.status_label.setProperty("status", "idle")
         self.path_label = QLabel("")
-        self.path_label.setStyleSheet("color: #7a7468; font-size: 11px;")
+        self.path_label.setObjectName("PathLabel")
         self.path_label.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        layout.addWidget(self.path_label)
+        meta_row.addWidget(self.status_label)
+        meta_row.addWidget(self.path_label, 1)
+        layout.addLayout(meta_row)
 
         button_row = QHBoxLayout()
         button_row.setSpacing(8)
 
-        open_btn = QPushButton("打开保存文件")
-        copy_btn = QPushButton("复制译文")
+        self.open_btn = QPushButton("打开记录")
+        self.copy_btn = QPushButton("复制译文")
         manual_btn = QPushButton("手动输入")
         close_btn = QPushButton("关闭")
+        self.copy_btn.setObjectName("PrimaryButton")
+        close_btn.setObjectName("CloseButton")
         close_btn.setDefault(True)
         close_btn.setAutoDefault(True)
+        self.open_btn.setEnabled(False)
+        self.copy_btn.setEnabled(False)
 
-        open_btn.clicked.connect(self.open_saved_file)
-        copy_btn.clicked.connect(self.copy_translation)
+        for button in (self.open_btn, self.copy_btn, manual_btn, close_btn):
+            button.setCursor(Qt.PointingHandCursor)
+
+        self.open_btn.clicked.connect(self.open_saved_file)
+        self.copy_btn.clicked.connect(self.copy_translation)
         manual_btn.clicked.connect(self.manual_translate)
         close_btn.clicked.connect(self.close)
 
-        button_row.addWidget(open_btn)
-        button_row.addWidget(copy_btn)
+        button_row.addWidget(self.open_btn)
         button_row.addWidget(manual_btn)
         button_row.addStretch(1)
         button_row.addWidget(close_btn)
+        button_row.addWidget(self.copy_btn)
         layout.addLayout(button_row)
-        self.resize(560, 340)
+        self.resize(600, 400)
+
+    def set_status(self, text, status="idle"):
+        self.status_label.setText(text)
+        self.status_label.setProperty("status", status)
+        self.status_label.style().unpolish(self.status_label)
+        self.status_label.style().polish(self.status_label)
+
+    def format_editor_text(self):
+        cursor = QTextCursor(self.editor.document())
+        cursor.select(QTextCursor.Document)
+        block_format = QTextBlockFormat()
+        block_format.setLineHeight(140, QTextBlockFormat.ProportionalHeight.value)
+        block_format.setBottomMargin(6)
+        cursor.mergeBlockFormat(block_format)
+        cursor.clearSelection()
+        self.editor.setTextCursor(cursor)
+        self.editor.moveCursor(QTextCursor.Start)
 
     def keyPressEvent(self, event):
         if event.key() in (Qt.Key_Return, Qt.Key_Enter, Qt.Key_Escape):
@@ -233,6 +351,7 @@ class ResultWindow(QWidget):
     def copy_translation(self):
         if self.current_translation:
             QGuiApplication.clipboard().setText(self.current_translation.strip())
+            self.set_status("✓ 已复制", "success")
 
     def manual_translate(self):
         text, ok = QInputDialog.getMultiLineText(
@@ -248,7 +367,11 @@ class ResultWindow(QWidget):
 
     def show_loading(self):
         self.editor.setPlainText("正在翻译，请稍候……")
+        self.format_editor_text()
         self.path_label.setText("")
+        self.open_btn.setEnabled(False)
+        self.copy_btn.setEnabled(False)
+        self.set_status("● 正在翻译", "loading")
         self.bring_to_front()
 
     def update_result(self, source_text, translation, saved_file):
@@ -256,7 +379,12 @@ class ResultWindow(QWidget):
         self.current_translation = translation
         self.current_saved_file = Path(saved_file)
         self.editor.setPlainText(translation.strip())
-        self.path_label.setText(str(saved_file))
+        self.format_editor_text()
+        self.path_label.setText(f"保存至  {self.current_saved_file.name}")
+        self.path_label.setToolTip(str(self.current_saved_file))
+        self.open_btn.setEnabled(True)
+        self.copy_btn.setEnabled(bool(translation.strip()))
+        self.set_status("✓ 已保存", "success")
         self.bring_to_front()
 
     def bring_to_front(self):
