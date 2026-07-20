@@ -8,7 +8,9 @@ global DEFAULT_HOTKEY := "Alt+T"
 global DATA_DIR := BASE_DIR "\data"
 global REQUEST_DIR := DATA_DIR "\requests"
 global STATE_FILE := DATA_DIR "\app_state.json"
-global RESIDENT_VERSION := "2026-07-18-apple-ui-3"
+global RESIDENT_VERSION := "2026-07-19-startup-prewarm-1"
+global RESIDENT_START_TIMEOUT_MS := 15000
+global RESIDENT_STARTING := false
 
 hotkeyText := LoadHotkeyFromConfig(CONFIG_PATH, DEFAULT_HOTKEY)
 ahkHotkey := ConvertHotkeyToAhk(hotkeyText)
@@ -19,6 +21,9 @@ try {
     MsgBox "配置里的 hotkey 无法注册：" hotkeyText "`n`n将回退到默认热键：" DEFAULT_HOTKEY "`n`n错误信息：" err.Message, APP_TITLE
     Hotkey ConvertHotkeyToAhk(DEFAULT_HOTKEY), TranslateSelectedText
 }
+
+; 登录或手动启动 AHK 后立即在后台预热 Python/Qt，避免第一次按热键才冷启动。
+SetTimer PrewarmResidentApp, -100
 
 
 TranslateSelectedText(*) {
@@ -57,7 +62,13 @@ TranslateSelectedText(*) {
 }
 
 
-EnsureResidentApp() {
+PrewarmResidentApp() {
+    EnsureResidentApp(false)
+}
+
+
+EnsureResidentApp(showError := true) {
+    global RESIDENT_STARTING
     DirCreate DATA_DIR
     DirCreate REQUEST_DIR
 
@@ -65,27 +76,47 @@ EnsureResidentApp() {
         return true
     }
 
-    TryStopResidentIfVersionMismatch()
-
-    pythonScript := BASE_DIR "\resident_app.py"
-    pythonExe := ResolvePythonGuiExecutable()
-    cmd := '"' pythonExe '" "' pythonScript '"'
-    try {
-        ; 不要使用 Hide：它会让随后创建的 Qt 结果窗口保持隐藏。
-        Run cmd, BASE_DIR
-    } catch Error as err {
-        MsgBox "无法启动常驻翻译进程：`n`n" err.Message, APP_TITLE
-        return false
+    ; 热键可能打断后台预热线程。此时只等待同一个启动过程，不重复拉起 Python。
+    if RESIDENT_STARTING {
+        return WaitForResident(showError)
     }
 
-    Loop 40 {
+    RESIDENT_STARTING := true
+    try {
+        TryStopResidentIfVersionMismatch()
+
+        pythonScript := BASE_DIR "\resident_app.py"
+        pythonExe := ResolvePythonGuiExecutable()
+        cmd := '"' pythonExe '" "' pythonScript '"'
+        try {
+            ; 不要使用 Hide：它会让随后创建的 Qt 结果窗口保持隐藏。
+            Run cmd, BASE_DIR
+        } catch Error as err {
+            if showError {
+                MsgBox "无法启动常驻翻译进程：`n`n" err.Message, APP_TITLE
+            }
+            return false
+        }
+
+        return WaitForResident(showError)
+    } finally {
+        RESIDENT_STARTING := false
+    }
+}
+
+
+WaitForResident(showError := true) {
+    attempts := Ceil(RESIDENT_START_TIMEOUT_MS / 200)
+    Loop attempts {
         Sleep 200
         if IsResidentAlive() {
             return true
         }
     }
 
-    MsgBox "常驻翻译进程启动失败，请检查 resident_app.py 或 Python 环境。", APP_TITLE
+    if showError {
+        MsgBox "常驻翻译进程启动超时，请检查 data\resident.log 或 Python 环境。", APP_TITLE
+    }
     return false
 }
 

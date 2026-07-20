@@ -50,7 +50,7 @@ PROCESSED_DIR = DATA_DIR / "processed"
 STATE_PATH = DATA_DIR / "app_state.json"
 LOCK_PATH = DATA_DIR / "resident.lock"
 RESIDENT_LOG_PATH = DATA_DIR / "resident.log"
-RESIDENT_VERSION = "2026-07-18-apple-ui-3"
+RESIDENT_VERSION = "2026-07-19-startup-prewarm-1"
 POLL_INTERVAL_MS = 150
 HEARTBEAT_INTERVAL_MS = 2000
 STALE_REQUEST_SECONDS = 300
@@ -413,8 +413,17 @@ class ResidentApp(QObject):
             directory.mkdir(parents=True, exist_ok=True)
         self.recover_interrupted_requests()
 
+        window_started_at = time.perf_counter()
         self.window = ResultWindow()
         self.window.manual_translation_requested.connect(self.process_manual_request)
+        # 隐藏状态下提前创建原生窗口并完成首帧渲染，避免第一次翻译时支付 Qt 冷启动成本。
+        self.window.ensurePolished()
+        self.window.winId()
+        self.window.grab()
+        append_resident_log(
+            f"result window prewarmed | elapsed_ms="
+            f"{(time.perf_counter() - window_started_at) * 1000:.0f}"
+        )
         self.thread_pool = QThreadPool.globalInstance()
         self.thread_pool.setMaxThreadCount(1)
 
@@ -508,12 +517,13 @@ class ResidentApp(QObject):
 
     def start_translation(self, text, source, request_id, request_path=None):
         self.active_request = request_path
-        self.window.show_loading()
         worker = TranslationWorker(text, source, request_id, request_path)
         worker.signals.finished.connect(self.translation_finished)
         worker.signals.failed.connect(self.translation_failed)
         self.active_worker = worker
+        # 翻译先进入后台线程；即使首次显示窗口较慢，也不会阻塞网络请求。
         self.thread_pool.start(worker)
+        self.window.show_loading()
 
     @Slot(object)
     def translation_finished(self, result):
