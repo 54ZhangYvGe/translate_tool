@@ -1,0 +1,9 @@
+{
+  "provider": "mock",
+  "save_dir": "data",
+  "hotkey": "Ctrl+Alt+F10",
+  "manual_input_hotkey": "Ctrl+I",
+  "screenshot_hotkey": "Ctrl+Alt+F11",
+  "screenshot_enabled": true,
+  "auto_read_aloud": false
+}

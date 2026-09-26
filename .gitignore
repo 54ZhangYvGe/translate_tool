@@ -8,8 +8,26 @@ __pycache__/
 .env.*
 
 data/
+.venv/
+.venv.broken-*/
+.release-venv/
+build/
+dist/
+release/
+release-test*/
+*.exe
+*.zip
+*.whl
+*.dpapi
+*.tmp
 *.log
 config.json
+/AGENTS.md
+/MEMORY.md
+/RELEASE_CHECKS.md
+/TRANEasy_RELEASE_REPORT.md
+/docs/PUBLISH-CHECKLIST.md
+/assets/*-concept.png
 
 .git/
 

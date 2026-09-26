@@ -4,6 +4,16 @@
   "target_language": "zh-CHS",
   "source_language": "auto",
   "hotkey": "Alt+T",
+  "screenshot_enabled": true,
+  "screenshot_hotkey": "Ctrl+Alt+T",
   "youdao_api_url": "https://openapi.youdao.com/api",
-  "keep_processed_requests": false
+  "youdao_tts_api_url": "https://openapi.youdao.com/ttsapi",
+  "youdao_tts_voice_name": "youxiaoqin",
+  "keep_processed_requests": false,
+  "auto_read_aloud": false,
+  "auto_read_max_chars": 50,
+  "manual_input_hotkey": "Ctrl+I",
+  "result_font_size": 14,
+  "result_card_width": 378,
+  "result_card_height": 360
 }

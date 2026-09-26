@@ -1,361 +1,160 @@
-# translate_tool — Windows 划词翻译工具
+<p align="center"><img src="assets/transeasy-icon-preview.png" width="96" alt="TranEasy logo"></p>
 
-![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
-![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB)
-![AutoHotkey](https://img.shields.io/badge/AutoHotkey-v2-334455)
-![PySide6](https://img.shields.io/badge/GUI-PySide6-41CD52)
+<h1 align="center">TranEasy</h1>
 
-轻量、快速的 Windows 桌面划词翻译工具：选中文本，按下全局快捷键（默认 `Alt + T`），即可调用翻译接口并弹出结果，同时按日期保存翻译记录。
+<p align="center">Translate text and screenshots without leaving what you're doing.<br>Windows 桌面翻译工具：划词、截图、OCR 与朗读，在需要时出现。</p>
 
-> A lightweight Windows selection translator powered by AutoHotkey v2, Python and PySide6. Select text, press a global hotkey, and get the translation in a native desktop window.
+<p align="center">
+<img src="https://img.shields.io/badge/Windows-10%20%2F%2011-555555" alt="Windows 10/11">
+<img src="https://img.shields.io/badge/version-v0.1.0-E87653" alt="v0.1.0">
+<img src="https://img.shields.io/badge/Python-3.12-3776AB" alt="Python 3.12">
+<img src="https://img.shields.io/badge/UI-PySide6-41CD52" alt="PySide6">
+<a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-555555" alt="MIT license"></a>
+</p>
 
-![translate_tool 翻译结果窗口](assets/translate-result.png)
+![TranEasy desktop window](assets/transeasy-main.png)
 
-适合需要在浏览器、PDF、Office、编辑器和桌面软件中快速翻译英文的用户。关键词：Windows translator、selection translation、划词翻译、AutoHotkey translator、Youdao API、PySide6 desktop app。
+*Current native UI, rendered with public demo text. This is not a recording of a live API request or an end-to-end hotkey test. The current application interface is in Chinese.*
 
-## 为什么使用 translate_tool？
+## Download for Windows
 
-- **全局快捷键**：无需切换到翻译网站，选中文字后直接翻译。
-- **响应迅速**：Python/PySide6 常驻后台，避免重复冷启动。
-- **原生弹窗**：结果窗口支持复制译文、手动输入和打开历史记录。
-- **本地历史**：原文和译文按日期保存为 TXT，数据目录由你控制。
-- **可配置**：支持快捷键、源语言、目标语言、保存目录与 mock 模式。
+**Windows x64 · No Python, PySide6 or AutoHotkey installation required.**
 
-## 快速开始
+| Edition | Download | Getting started |
+| --- | --- | --- |
+| Installer — recommended | [TranEasy-Setup-v0.1.0.exe](https://github.com/54ZhangYvGe/translate_tool/releases/download/v0.1.0/TranEasy-Setup-v0.1.0.exe) | Install, then launch from the Start menu; a desktop shortcut is optional |
+| Portable | [TranEasy-v0.1.0-win64-portable.zip](https://github.com/54ZhangYvGe/translate_tool/releases/download/v0.1.0/TranEasy-v0.1.0-win64-portable.zip) | Extract the entire archive and run `TranEasy.exe` |
+
+> Keep the bundled folders alongside the executables.
+
+## Features
+
+- **Selection translation** — Select text and press `Alt+T` to view the translation.
+- **Screenshot translation** — Press `Ctrl+Alt+T`, select a region, and translate its locally recognized text. Blank regions are dismissed quietly.
+- **Manual input** — Translate text from the collapsible sidebar without switching to a website.
+- **Text to speech** — Read translations aloud using an independent Youdao TTS service. Automatic playback is optional; each request is limited to 50 words.
+- **Local history** — Browse recent translations and revisit their original text.
+- **Customizable controls** — Configure the screenshot hotkey, screenshot toggle, translation font size and result-card dimensions.
+- **Protected credentials** — Translation and TTS secrets are stored independently using Windows current-user DPAPI.
+
+## Screenshots
+
+### Translation history
+
+![TranEasy translation history](assets/transeasy-history.png)
+
+### Independent API settings
+
+![TranEasy API settings](assets/transeasy-settings.png)
+
+## Quick Start
+
+1. Install or extract TranEasy, then launch it. It stays in the system tray.
+2. Open the result window's hamburger sidebar → **Settings (设置)**. Enter your own Youdao credentials and save.
+3. Select text and press **Alt+T**, or press **Ctrl+Alt+T** and select a screen region. Press **Esc** to cancel capture.
+4. For manual translation, open **Manual input (手动输入)** in the sidebar. **Ctrl+I** also works inside the result window.
+5. Copy the result, read it aloud or browse history from the sidebar. Closing the result window hides it; use the tray's Exit command to stop the application.
+
+The screenshot and in-window manual-input shortcuts can be changed in Settings. The selection shortcut defaults to `Alt+T` and can be changed through the ordinary configuration's `hotkey` field. Shortcut conflicts or applications with different privilege levels may require adjustments.
+
+## API Setup
+
+Online translation and speech synthesis use **Youdao AI** and require your own credentials. TranEasy does not include the author's API keys.
+
+Create an application and enable the corresponding service at [Youdao AI](https://ai.youdao.com/). Find its App ID and App Secret in the application overview. See the official [getting-started documentation](https://ai.youdao.com/doc.s) and [text translation API reference](https://ai.youdao.com/DOCSIRMA/html/transapi/trans/api/wbfy/index.html). Availability, quotas and pricing are determined by Youdao.
+
+| Service | Separate credentials |
+| --- | --- |
+| Text translation | App ID / App Secret |
+| Text to speech | App ID / App Secret |
+
+The two IDs and secrets are independent. Secret inputs are masked by default. Enter a new value to replace a secret, leave it blank to keep the existing value, or select the corresponding clear option and save to delete it. Clearing one service does not affect the other. TTS credentials are unnecessary if you only need translation.
+
+**No manual `.env` editing is required.** Legacy credentials are migrated once: the secure write is verified before the corresponding legacy fields are removed. Failed migrations preserve the old data; plaintext files are not used as the official secret store.
+
+## Privacy & Security
+
+- App Secrets are protected with Windows current-user DPAPI, kept out of ordinary `config.json`, and never bundled with the application.
+- Screenshots are processed locally in memory. OCR runs locally; online translation sends recognized text, not the screenshot.
+- Speech synthesis sends the text to Youdao TTS. Generated audio is played through a local temporary file.
+- Translation history is stored locally as **plaintext TXT**, not encrypted. Manage sensitive content and backups accordingly.
+- TranEasy has no account system or application telemetry upload. Online providers handle requests under their own policies.
+- DPAPI files are not portable credential backups. Moving to another Windows user or environment may require re-entering credentials.
+
+## Installer vs. Portable
+
+| | Installer | Portable |
+| --- | --- | --- |
+| Application files | Current user's `%LOCALAPPDATA%\Programs\TranEasy` | Extracted folder |
+| Configuration and history | Under `%LOCALAPPDATA%\TranEasy` | Under the extracted folder |
+| Secrets | Independent DPAPI files under `%LOCALAPPDATA%\ScreenTrans` for both editions | Same |
+| Launch | Start menu; optional desktop shortcut | `TranEasy.exe` |
+| Removal | Windows uninstall; configuration and history are retained | Exit, back up history, then remove the folder |
+
+The `ScreenTrans` credential-directory name is retained for compatibility. The installer does not enable startup automatically. The main application does not require administrator privileges. The portable folder must be writable.
+
+## Known Limitations
+
+- Windows x64 only. Windows 10 / 11 are the targets; local execution has been tested on Windows 11.
+- First-time OCR model initialization may be slow. No fixed response-time guarantee is made.
+- Binaries are not code-signed; Windows SmartScreen may show an unknown-publisher warning.
+- Online translation and TTS depend on your credentials, network and service quota.
+- The current application interface is in Chinese.
+- Live API calls and clean-Windows compatibility have not been fully verified. Physical hotkeys have been manually verified by the author; automated key injection was inconclusive.
+
+## Development
+
+This section is for developers. End users can use the downloads above.
+
+Use standard CPython 3.12 x64 and AutoHotkey v2. Building the AHK launcher also requires Ahk2Exe.
 
 ```powershell
 git clone https://github.com/54ZhangYvGe/translate_tool.git
 cd translate_tool
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+py -3.12 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.lock.txt
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
 Copy-Item config.example.json config.json
 ```
 
-首次体验可把 `config.json` 中的 `provider` 改为 `mock`，然后双击
-`translator.ahk`；使用真实翻译时，再按照下文配置有道智云 API 密钥。
+For source execution, run `translator.ahk`. Set `provider` to `mock` in the configuration for development tests without real credentials.
 
-当前项目主要由三部分组成：
-
-- `translator.ahk`：AutoHotkey v2 脚本，负责注册快捷键、复制选中文本、写入翻译请求。
-- `resident_app.py`：Python + PySide6 常驻程序，负责轮询请求、展示翻译窗口。
-- `translate.py`：翻译核心逻辑，负责读取配置、调用有道智云 API、保存翻译记录。
-
----
-
-## 功能特性
-
-- 支持选中文字后按快捷键翻译。
-- 支持常驻单实例模式，避免每次翻译都重新启动 Python/PySide6。
-- 翻译请求在后台线程执行，不阻塞界面和心跳。
-- 支持有道智云文本翻译 API。
-- 支持 `mock` 测试模式，不调用真实 API。
-- 翻译结果按日期追加保存到本地文件。
-- 结果窗口支持：
-  - 复制译文
-  - 打开保存文件
-  - 手动输入文本翻译
-  - `Enter` / `Esc` 快速隐藏窗口
-- 支持通过 `config.json` 配置快捷键、保存目录、语言和翻译服务。
-
----
-
-## 环境要求
-
-### 1. Windows
-
-当前工具依赖 AutoHotkey 和 Windows 剪贴板/快捷键机制，主要面向 Windows 使用。
-
-### 2. Python
-
-建议使用 Python 3.10 或以上版本。
-
-### 3. AutoHotkey v2
-
-需要安装 AutoHotkey v2。
-
-注意：本项目的 `translator.ahk` 使用的是 AutoHotkey v2 语法，不兼容 AutoHotkey v1。
-
-### 4. 有道智云 API
-
-如果使用真实翻译，需要准备有道智云文本翻译应用的：
-
-- 应用 ID，即 `YOUDAO_APP_KEY`
-- 应用密钥，即 `YOUDAO_APP_SECRET`
-
-如果只是测试流程，可以使用 `mock` 模式，不需要有道 API Key。
-
----
-
-## 安装依赖
-
-在项目目录执行：
-
-```bash
-pip install -r requirements.txt
+```powershell
+.\build_release.ps1
+.\build_installer.ps1 -Compiler '<path to Inno Setup ISCC.exe>'
 ```
 
-当前 Python 依赖包括：
+Override the default AHK compiler locations with `-AhkCompiler` / `-AhkBase` if needed. PyInstaller produces `dist/ScreenTrans`; the installer and portable ZIP go into `release/`. Build outputs are excluded from source control.
 
-```txt
-requests
-python-dotenv
-PySide6
-```
-
----
-
-## 配置 `.env`
-
-在项目根目录创建 `.env` 文件：
-
-```env
-YOUDAO_APP_KEY=你的有道应用ID
-YOUDAO_APP_SECRET=你的有道应用密钥
-```
-
-示例：
-
-```env
-YOUDAO_APP_KEY=xxxxxxxx
-YOUDAO_APP_SECRET=xxxxxxxxxxxxxxxx
-```
-
----
-
-## 配置 `config.json`
-
-复制仓库中的 `config.example.json` 为 `config.json` 后再按需修改。`config.json` 是本机配置，不提交到 Git；如果文件不存在，程序会使用代码里的默认配置。
- 
-config.json 示例：
-```json
-{
-  "save_dir": "data",
-  "provider": "youdao",
-  "target_language": "zh-CHS",
-  "source_language": "auto",
-  "youdao_api_url": "https://openapi.youdao.com/api",
-  "hotkey": "Alt+T",
-  "keep_processed_requests": false
-}
-```
-
-字段说明：
-
-| 字段 | 说明 |
+| File | Purpose |
 | --- | --- |
-| `save_dir` | 翻译记录保存目录 |
-| `provider` | 翻译服务，可选 `youdao` 或 `mock` |
-| `target_language` | 目标语言，中文简体为 `zh-CHS` |
-| `source_language` | 源语言，默认 `auto` 自动识别 |
-| `youdao_api_url` | 有道文本翻译 API 地址 |
-| `hotkey` | 翻译快捷键，例如 `Ctrl+Alt+T`、`Alt+T` |
-| `keep_processed_requests` | 是否保留成功请求原文；默认 `false`，减少敏感内容重复落盘 |
+| `resident_app.py` | Resident PySide6 GUI and task coordination |
+| `translate.py` | Translation, speech, configuration and history |
+| `screen_ocr.py` | Local OCR |
+| `secret_store.py` | Windows DPAPI storage and migration |
+| `translator.ahk` | Global hotkeys and resident-process launcher |
+| `tests/` | Automated tests |
+| `ScreenTrans.spec` / `installer/TranEasy.iss` | Packaging and installer configuration |
 
-`save_dir` 可以使用相对于项目目录的路径，例如 `data`，这样移动项目目录后无需修改盘符。
+`run_packaged_checks.ps1` / `run_installer_checks.ps1` use isolated directories, Mock responses and synthetic credentials. They do not replace live API or clean-Windows acceptance tests.
 
-如果想先测试程序流程，不调用有道 API，可以设置：
+### Stack
 
-```json
-{
-  "provider": "mock"
-}
-```
+Python · PySide6 · AutoHotkey v2 · RapidOCR / ONNX Runtime CPU · Windows DPAPI · PyInstaller · Inno Setup.
 
----
+## FAQ
 
-## 使用方法
+**No window after launch?** TranEasy stays in the tray. Select text and use `Alt+T`. If it does not respond, check the tray, hotkey conflicts and the target application's privileges.
 
-### 方式一：手动启动
+**No text in a screenshot?** Blank selections are dismissed quietly. Capture clear text and allow time for the initial OCR warm-up.
 
-1. 双击运行项目目录里的 `translator.ahk`。
-2. 在任意软件里选中一段文本。
-3. 按配置的快捷键，默认是：
+**Translation or speech failed?** Check the corresponding service's separate credentials, enabled service, network and quota. You can retry without restarting the whole application.
 
-   ```text
-   Alt+T
-   ```
+**Credentials stopped working after moving computers?** DPAPI is bound to the Windows user environment. Re-enter secrets rather than copying ciphertext as a universal backup.
 
-4. 等待翻译结果窗口弹出。
-5. 在结果窗口中可以：
-   - 点击“复制译文”复制翻译结果
-   - 点击“打开保存文件”打开当天的翻译记录
-   - 点击“手动输入”手动输入文本翻译
-   - 按 `Enter` / `Esc` 隐藏窗口
+**Does uninstall erase history?** The installer retains user data. Portable history is in the extracted folder, so back it up before removing that folder.
 
-第一次使用时可能会稍慢，因为 `translator.ahk` 会启动 Python/PySide6 常驻进程。常驻进程启动后，后续翻译通常会更快。
+## License
 
----
-
-## 桌面 AHK 图标 / 快捷方式
-
-当前项目代码**不会自动创建桌面图标**。
-
-如果你的桌面上已经有一个可以直接点击的 AHK 图标，通常是以下情况之一：
-
-- 你之前手动创建过 `translator.ahk` 的桌面快捷方式。
-- Windows 已经把 `.ahk` 文件关联给 AutoHotkey，所以脚本本身可以双击运行。
-- 某些编辑器或工具帮你创建过快捷方式。
-
-也就是说：桌面图标目前不是程序自动生成的。如果换一台电脑或重新部署项目，需要手动创建。
-
-### 手动创建桌面快捷方式
-
-推荐做法：
-
-1. 找到项目中的：
-
-   ```text
-   D:\translate_tool\translator.ahk
-   ```
-
-2. 右键 `translator.ahk`。
-3. 选择“发送到” → “桌面快捷方式”。
-4. 之后双击桌面上的快捷方式即可启动翻译工具。
-
-### 设置开机自启
-
-如果希望每次开机后自动启动翻译快捷键：
-
-1. 按 `Win + R`。
-2. 输入：
-
-   ```text
-   shell:startup
-   ```
-
-3. 回车后会打开 Windows 启动目录。
-4. 把 `translator.ahk` 的快捷方式复制到这个目录。
-5. 下次开机后，Windows 会自动运行该快捷方式。
-
-注意：这里只是 Windows 的启动项配置，不是当前程序自动创建的。
-
----
-
-## 工作流程
-
-整体流程如下：
-
-```text
-用户选中文本
-  ↓
-按 AutoHotkey 快捷键
-  ↓
-translator.ahk 复制选中文本
-  ↓
-translator.ahk 确认 resident_app.py 常驻进程是否存活
-  ↓
-如果未启动，则启动 resident_app.py
-  ↓
-translator.ahk 写入 data/requests/request_xxx.json
-  ↓
-resident_app.py 原子认领请求，避免多个进程重复处理
-  ↓
-translate.py 读取 config.json 和 .env
-  ↓
-后台工作线程调用有道 API 或 mock 翻译
-  ↓
-translate.py 保存翻译记录
-  ↓
-resident_app.py 弹出结果窗口
-```
-
----
-
-## 文件说明
-
-| 文件/目录 | 说明 |
-| --- | --- |
-| `translator.ahk` | AutoHotkey v2 快捷键入口 |
-| `resident_app.py` | PySide6 常驻 GUI 程序 |
-| `translate.py` | 翻译核心逻辑 |
-| `requirements.txt` | Python 依赖列表 |
-| `.env` | 有道 API Key，本地创建，不建议提交 |
-| `config.json` | 用户配置文件，可选 |
-| `config.example.json` | 可提交到仓库的配置模板 |
-| `data/` | 运行时数据目录，保存请求、日志和翻译记录 |
-| `data/requests/` | AHK 写入的翻译请求目录 |
-| `data/processing/` | 已被常驻进程认领、正在处理的请求 |
-| `data/processed/` | 失败请求；仅在配置开启时保留成功请求 |
-| `data/perf.log` | 性能日志 |
-| `data/resident.log` | 常驻进程日志 |
-
----
-
-## 常见问题
-
-### 1. 第一次翻译为什么比较慢？(第一次可能需要2s左右，但是之后基本上在几百毫秒，基本上是秒出)
-
-第一次翻译时，`translator.ahk` 需要启动 `resident_app.py`，而 `resident_app.py` 会加载 Python、PySide6 和界面组件，所以会慢一些。
-
-常驻进程启动后，后续翻译不需要反复冷启动，一般会快很多。
-
-### 2. 按快捷键没有反应怎么办？
-
-可以检查：
-
-- 是否安装的是 AutoHotkey v2。
-- `translator.ahk` 是否正在运行。
-- 当前快捷键是否被其他软件占用。
-- 是否真的选中了文本。
-- `config.json` 中的 `hotkey` 写法是否正确。
-
-如果提示“翻译请求已发送”但结果窗口没有出现，请先退出并重新运行
-`translator.ahk`，确保常驻进程加载的是最新版本；随后检查
-`data/resident.log` 中是否出现 `result window shown`。
-
-### 3. 提示没有配置 `YOUDAO_APP_KEY` 或 `YOUDAO_APP_SECRET`
-
-说明 `.env` 文件不存在，或字段名不正确。
-
-请确认项目根目录有 `.env` 文件，并且包含：
-
-```env
-YOUDAO_APP_KEY=你的有道应用ID
-YOUDAO_APP_SECRET=你的有道应用密钥
-```
-
-### 4. 如何不调用有道 API，只测试窗口和流程？
-
-把 `config.json` 中的 `provider` 改成：
-
-```json
-{
-  "provider": "mock"
-}
-```
-
-然后重新运行 `translator.ahk`。
-
-### 5. 如何退出工具？
-
-可以在系统托盘找到 AutoHotkey 图标，右键退出 `translator.ahk`。
-
-如果需要结束 Python 常驻进程，可以在任务管理器中结束对应的 `pythonw.exe` / `python.exe` 进程。
-
-### 6. 翻译记录保存在哪里？
-
-默认保存到：
-
-```text
-D:/translate_tool/data
-```
-
-每天一个文件，例如：
-
-```text
-2026-05-25.txt
-```
-
-可以通过 `config.json` 的 `save_dir` 修改保存目录。
-
----
-
-## 开发备注
-
-Python 语法检查：
-
-```bash
-python -m py_compile translate.py resident_app.py
-```
-
-AutoHotkey 脚本需要使用 AutoHotkey v2 运行。
+TranEasy source code is licensed under the [MIT License](LICENSE). Third-party dependencies and bundled components retain their own licenses. MIT does not replace Youdao's service terms or third-party build-tool licensing conditions.

@@ -1,16 +1,41 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-global APP_TITLE := "translate_tool"
+global APP_TITLE := "TranEasy"
 global BASE_DIR := A_ScriptDir
-global CONFIG_PATH := BASE_DIR "\config.json"
+global USER_DIR := FileExist(BASE_DIR "\installed.mode") ? EnvGet("LOCALAPPDATA") "\TranEasy" : BASE_DIR
+global CONFIG_PATH := USER_DIR "\config.json"
 global DEFAULT_HOTKEY := "Alt+T"
-global DATA_DIR := BASE_DIR "\data"
+global SCREENSHOT_HOTKEY := "Ctrl+Alt+T"
+global activeScreenshotHotkey := ""
+global lastScreenshotRequested := ""
+global DATA_DIR := USER_DIR "\data"
 global REQUEST_DIR := DATA_DIR "\requests"
 global STATE_FILE := DATA_DIR "\app_state.json"
-global RESIDENT_VERSION := "2026-07-19-startup-prewarm-1"
+global RESIDENT_VERSION := "0.1.0-rc1"
 global RESIDENT_START_TIMEOUT_MS := 15000
 global RESIDENT_STARTING := false
+
+; Parse-only smoke check used by tests; no hotkeys or resident process are started.
+if A_Args.Length && A_Args[1] = "--validate" {
+    ExitApp
+}
+
+OnExit StopResidentApp
+if A_Args.Length && A_Args[1] = "--exit" {
+    residentPid := GetResidentPid()
+    StopResidentApp()
+    Loop 75 {
+        if residentPid = "" || !ProcessExist(residentPid) {
+            ExitApp 0
+        }
+        Sleep 200
+    }
+    ExitApp 3
+}
+if FileExist(BASE_DIR "\assets\transeasy-icon.ico") {
+    TraySetIcon BASE_DIR "\assets\transeasy-icon.ico"
+}
 
 hotkeyText := LoadHotkeyFromConfig(CONFIG_PATH, DEFAULT_HOTKEY)
 ahkHotkey := ConvertHotkeyToAhk(hotkeyText)
@@ -19,8 +44,12 @@ try {
     Hotkey ahkHotkey, TranslateSelectedText
 } catch Error as err {
     MsgBox "配置里的 hotkey 无法注册：" hotkeyText "`n`n将回退到默认热键：" DEFAULT_HOTKEY "`n`n错误信息：" err.Message, APP_TITLE
-    Hotkey ConvertHotkeyToAhk(DEFAULT_HOTKEY), TranslateSelectedText
+    ahkHotkey := ConvertHotkeyToAhk(DEFAULT_HOTKEY)
+    Hotkey ahkHotkey, TranslateSelectedText
 }
+
+SyncScreenshotHotkey()
+SetTimer SyncScreenshotHotkey, 1000
 
 ; 登录或手动启动 AHK 后立即在后台预热 Python/Qt，避免第一次按热键才冷启动。
 SetTimer PrewarmResidentApp, -100
@@ -62,8 +91,82 @@ TranslateSelectedText(*) {
 }
 
 
+TranslateScreenRegion(*) {
+    try {
+        if !EnsureResidentApp() {
+            return
+        }
+        requestId := BuildRequestId()
+        WriteTranslateRequest(requestId, "", "screenshot", "capture")
+        SetTimer ActivateCaptureWindow, -50
+    } catch Error as err {
+        MsgBox "截图翻译启动失败：`n`n" err.Message, APP_TITLE
+    }
+}
+
+
+ActivateCaptureWindow() {
+    hwnd := WinWait("截图翻译", , 10)
+    if hwnd {
+        try WinActivate "ahk_id " hwnd
+    }
+}
+
+
 PrewarmResidentApp() {
     EnsureResidentApp(false)
+}
+
+
+SyncScreenshotHotkey() {
+    global CONFIG_PATH, SCREENSHOT_HOTKEY, ahkHotkey
+    global activeScreenshotHotkey, lastScreenshotRequested
+    settings := LoadScreenshotSettings(CONFIG_PATH, SCREENSHOT_HOTKEY)
+    signature := (settings.enabled ? "on:" : "off:") settings.hotkey
+    if signature = lastScreenshotRequested {
+        return
+    }
+    lastScreenshotRequested := signature
+    desired := ""
+    if settings.enabled {
+        try {
+            desired := ConvertHotkeyToAhk(settings.hotkey)
+            if desired = ahkHotkey {
+                throw Error("截图快捷键不能与划词翻译快捷键相同")
+            }
+            if desired != activeScreenshotHotkey {
+                Hotkey desired, TranslateScreenRegion
+            }
+        } catch Error as err {
+            OutputDebug "translate_tool 截图热键注册失败：" err.Message
+            return
+        }
+    }
+    if activeScreenshotHotkey != "" && activeScreenshotHotkey != desired {
+        Hotkey activeScreenshotHotkey, "Off"
+    }
+    activeScreenshotHotkey := desired
+}
+
+
+LoadScreenshotSettings(configPath, fallbackHotkey) {
+    settings := {enabled: true, hotkey: fallbackHotkey}
+    if !FileExist(configPath) {
+        return settings
+    }
+    try {
+        content := FileRead(configPath, "UTF-8")
+        if RegExMatch(content, '"screenshot_enabled"\s*:\s*(true|false)', &enabledMatch) {
+            settings.enabled := enabledMatch[1] = "true"
+        }
+        if RegExMatch(content, '"screenshot_hotkey"\s*:\s*"([^"]+)"', &hotkeyMatch) {
+            if Trim(hotkeyMatch[1]) != "" {
+                settings.hotkey := Trim(hotkeyMatch[1])
+            }
+        }
+    } catch {
+    }
+    return settings
 }
 
 
@@ -85,9 +188,14 @@ EnsureResidentApp(showError := true) {
     try {
         TryStopResidentIfVersionMismatch()
 
-        pythonScript := BASE_DIR "\resident_app.py"
-        pythonExe := ResolvePythonGuiExecutable()
-        cmd := '"' pythonExe '" "' pythonScript '"'
+        packagedResident := BASE_DIR "\ScreenTransResident.exe"
+        if FileExist(packagedResident) {
+            cmd := '"' packagedResident '"'
+        } else {
+            pythonScript := BASE_DIR "\resident_app.py"
+            pythonExe := ResolvePythonGuiExecutable()
+            cmd := '"' pythonExe '" "' pythonScript '"'
+        }
         try {
             ; 不要使用 Hide：它会让随后创建的 Qt 结果窗口保持隐藏。
             Run cmd, BASE_DIR
@@ -101,6 +209,20 @@ EnsureResidentApp(showError := true) {
         return WaitForResident(showError)
     } finally {
         RESIDENT_STARTING := false
+    }
+}
+
+
+StopResidentApp(*) {
+    ; Ask only the resident identified by this portable directory to quit.
+    if IsResidentAlive() {
+        shutdownPath := DATA_DIR "\shutdown.request"
+        try {
+            if FileExist(shutdownPath) {
+                FileDelete shutdownPath
+            }
+            FileAppend GetResidentPid(), shutdownPath, "UTF-8"
+        }
     }
 }
 
@@ -219,13 +341,14 @@ BuildRequestId() {
 }
 
 
-WriteTranslateRequest(requestId, text, source) {
+WriteTranslateRequest(requestId, text, source, action := "translate") {
     DirCreate REQUEST_DIR
 
     payload := '{'
         . '"id":"' JsonEscape(requestId) '",' 
         . '"text":"' JsonEscape(text) '",' 
         . '"source":"' JsonEscape(source) '",' 
+        . '"action":"' JsonEscape(action) '",'
         . '"created_at":"' JsonEscape(FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss")) '"'
         . '}'
 
@@ -324,7 +447,7 @@ ConvertHotkeyToAhk(hotkeyText) {
                 modifiers .= "!"
             case "shift":
                 modifiers .= "+"
-            case "win", "windows":
+            case "win", "windows", "meta":
                 modifiers .= "#"
             default:
                 throw Error("不支持的修饰键：" parts[A_Index])
