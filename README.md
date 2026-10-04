@@ -31,6 +31,7 @@
 
 - **Selection translation** — Select text and press `Alt+T` to view the translation.
 - **Screenshot translation** — Press `Ctrl+Alt+T`, select a region, and translate its locally recognized text. Blank regions are dismissed quietly.
+  Turn off **Auto-translate screenshots (截图后自动翻译)** in Settings to display and copy recognized text without calling the translation API.
 - **Manual input** — Translate text from the collapsible sidebar without switching to a website.
 - **Text to speech** — Read translations aloud using an independent Youdao TTS service. Automatic playback is optional; each request is limited to 50 words.
 - **Local history** — Browse recent translations and revisit their original text.

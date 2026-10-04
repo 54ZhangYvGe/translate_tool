@@ -19,6 +19,18 @@ from translate import (
 
 
 class TranslateTests(unittest.TestCase):
+    def test_screenshot_auto_translate_defaults_true_and_persists_false(self):
+        with tempfile.TemporaryDirectory() as directory:
+            config_path = Path(directory) / "config.json"
+            config_path.write_text('{"provider":"mock","save_dir":"data"}', encoding="utf-8")
+            with patch.object(translate, "CONFIG_PATH", config_path), patch("translate.migrate_legacy_credentials"):
+                self.assertTrue(translate.load_config()["screenshot_auto_translate"])
+                saved = save_result_settings(False, 50, "Ctrl+I", True, "Ctrl+Alt+T", screenshot_auto_translate=False)
+                self.assertFalse(saved["screenshot_auto_translate"])
+                self.assertFalse(translate.load_config()["screenshot_auto_translate"])
+                with self.assertRaises(ValueError):
+                    save_result_settings(False, 50, "Ctrl+I", True, "Ctrl+Alt+T", screenshot_auto_translate="false")
+
     def test_youdao_sign_input_keeps_short_text(self):
         self.assertEqual(truncate_for_youdao_sign("short text"), "short text")
 

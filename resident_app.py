@@ -227,6 +227,19 @@ class TranslationWorker(QRunnable):
                         }
                     )
                     return
+                if not config.get("screenshot_auto_translate", True):
+                    # OCR-only requests never reach the translation API or history writer.
+                    self.signals.finished.emit({
+                        "ocr_only": True,
+                        "source_text": source_text,
+                        "source_label": self.source_label,
+                        "request_id": self.request_id,
+                        "request_path": self.request_path,
+                        "config": config,
+                        "timings": timings,
+                        "elapsed_ms": (time.perf_counter() - started_at) * 1000,
+                    })
+                    return
                 self.signals.ocr_ready.emit(self.request_id)
             translating_at = time.perf_counter()
             translation = translate_text(source_text, config)
@@ -884,6 +897,7 @@ class ResultWindow(QWidget):
         self.bring_to_front()
 
     def update_result(self, source_text, translation, saved_file):
+        self.copy_btn.setText("复制译文")
         self.current_source = source_text
         self.current_translation = translation
         self.current_saved_file = Path(saved_file)
@@ -1328,6 +1342,11 @@ class ModernResultWindow(ResultWindow):
         self.screenshot_checkbox.setObjectName("RailCheck")
         self.screenshot_checkbox.setChecked(bool(self.config.get("screenshot_enabled", True)))
         form.addWidget(self.screenshot_checkbox)
+        self.screenshot_translate_checkbox = QCheckBox("截图后自动翻译")
+        self.screenshot_translate_checkbox.setObjectName("RailCheck")
+        self.screenshot_translate_checkbox.setChecked(bool(self.config.get("screenshot_auto_translate", True)))
+        self.screenshot_translate_checkbox.setToolTip("关闭后只提取并展示文字，不调用翻译 API")
+        form.addWidget(self.screenshot_translate_checkbox)
         self.screenshot_hotkey_edit = QKeySequenceEdit(QKeySequence(str(self.config.get("screenshot_hotkey", "Ctrl+Alt+T"))))
         self.screenshot_hotkey_edit.setObjectName("RailInput")
         self.screenshot_hotkey_edit.setMaximumSequenceLength(1)
@@ -1549,6 +1568,7 @@ class ModernResultWindow(ResultWindow):
         self._show_stage("history", self.open_btn)
 
     def _select_history(self, record, card):
+        self.copy_btn.setText("复制译文")
         self.current_source = record["source"]
         self.current_translation = record["translation"]
         self.current_saved_file = Path(record["file"])
@@ -1563,6 +1583,25 @@ class ModernResultWindow(ResultWindow):
 
     def open_settings(self):
         self._show_stage("settings", self.settings_btn)
+
+    def show_extracted_text(self, text):
+        self.cleanup_audio_file()
+        self.current_source = text
+        # The existing copy action copies the text currently displayed on the result card.
+        self.current_translation = text
+        self.current_tts_text = None
+        self.current_saved_file = None
+        self.source_view.setPlainText(text)
+        self.editor.setPlainText(text)
+        self.format_editor_text()
+        self.path_label.clear()
+        self.path_label.setToolTip("")
+        self.copy_btn.setText("复制文字")
+        self.copy_btn.setEnabled(bool(text.strip()))
+        self.read_btn.setEnabled(False)
+        self.open_btn.setEnabled(True)  # Existing translation history remains accessible.
+        self.set_status("✓ 已提取文字", "success")
+        self.bring_to_front()
 
     def save_settings(self):
         manual = self.manual_hotkey_edit.keySequence().toString(QKeySequence.PortableText)
@@ -1591,6 +1630,7 @@ class ModernResultWindow(ResultWindow):
                 tts_app_key=self.tts_api_key_edit.text(),
                 tts_app_secret=self.tts_api_secret_edit.text(),
                 clear_tts_secret=self.clear_tts_secret_checkbox.isChecked(),
+                screenshot_auto_translate=self.screenshot_translate_checkbox.isChecked(),
             )
         except Exception as exc:
             QMessageBox.critical(self, "设置保存失败", str(exc))
@@ -1887,11 +1927,14 @@ class ResidentApp(QObject):
         rendering_at = time.perf_counter()
         self.window.config = result["config"]
         self.window.apply_config_to_ui()
-        self.window.update_result(
-            result["source_text"],
-            result["translation"],
-            result["saved_file"],
-        )
+        if result.get("ocr_only", False):
+            self.window.show_extracted_text(result["source_text"])
+        else:
+            self.window.update_result(
+                result["source_text"],
+                result["translation"],
+                result["saved_file"],
+            )
         render_ms = (time.perf_counter() - rendering_at) * 1000
         request_path = result["request_path"]
         if request_path:

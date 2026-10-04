@@ -83,7 +83,25 @@ class ModernResultWindowTests(unittest.TestCase):
         self.assertEqual(save.call_args.args[5:], ("sample-app", "sample-secret", False, 14, 378, 360))
         self.assertEqual(self.window.api_secret_edit.text(), "")
         self.assertEqual(self.window.tts_api_secret_edit.echoMode(), QLineEdit.Password)
-        self.assertEqual(save.call_args.kwargs, {"tts_app_key": "", "tts_app_secret": "", "clear_tts_secret": False})
+        self.assertEqual(save.call_args.kwargs, {"tts_app_key": "", "tts_app_secret": "", "clear_tts_secret": False, "screenshot_auto_translate": True})
+
+    def test_ocr_only_setting_is_saved_and_result_is_copyable_without_tts(self):
+        self.assertTrue(self.window.screenshot_translate_checkbox.isChecked())
+        self.window.screenshot_translate_checkbox.setChecked(False)
+        with patch("resident_app.save_result_settings", return_value=dict(self.window.config)) as save:
+            self.window.save_settings()
+        self.assertFalse(save.call_args.kwargs["screenshot_auto_translate"])
+        self.window.config["auto_read_aloud"] = True
+        with patch.object(self.window, "read_translation") as read:
+            self.window.show_extracted_text("Hello OCR")
+            self.app.processEvents()
+        read.assert_not_called()
+        self.assertEqual(self.window.editor.toPlainText(), "Hello OCR")
+        self.assertTrue(self.window.copy_btn.isEnabled())
+        self.assertEqual(self.window.copy_btn.text(), "复制文字")
+        self.assertFalse(self.window.read_btn.isEnabled())
+        self.assertIsNone(self.window.current_saved_file)
+        self.assertEqual(self.window.status_label.text(), "已提取文字")
 
     def test_result_font_and_card_size_follow_saved_settings(self):
         self.window.config = dict(self.window.config, result_font_size=18,

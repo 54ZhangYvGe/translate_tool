@@ -165,6 +165,7 @@ def load_config():
         "youdao_tts_voice_name": "youxiaoqin",
         "hotkey": "Alt+T",
         "screenshot_enabled": True,
+        "screenshot_auto_translate": True,
         "screenshot_hotkey": "Ctrl+Alt+T",
         "keep_processed_requests": False,
         "auto_read_aloud": False,
@@ -219,6 +220,8 @@ def load_config():
         raise ValueError("配置项 auto_read_aloud 必须是 true 或 false")
     if not isinstance(default_config.get("screenshot_enabled"), bool):
         raise ValueError("配置项 screenshot_enabled 必须是 true 或 false")
+    if not isinstance(default_config.get("screenshot_auto_translate"), bool):
+        raise ValueError("配置项 screenshot_auto_translate 必须是 true 或 false")
     default_config["screenshot_hotkey"] = _require_non_empty_string(
         default_config, "screenshot_hotkey"
     )
@@ -301,10 +304,13 @@ def save_result_settings(
     tts_app_key="",
     tts_app_secret="",
     clear_tts_secret=False,
+    screenshot_auto_translate=True,
 ):
     """Save visible result-window settings without putting credentials in config.json."""
     if not isinstance(screenshot_enabled, bool):
         raise ValueError("截图翻译开关必须是布尔值")
+    if not isinstance(screenshot_auto_translate, bool):
+        raise ValueError("截图后自动翻译开关必须是布尔值")
     if not isinstance(auto_read_aloud, bool):
         raise ValueError("自动朗读开关必须是布尔值")
     if isinstance(auto_read_max_chars, bool) or not isinstance(auto_read_max_chars, int) or not 1 <= auto_read_max_chars <= TTS_MAX_WORDS:
@@ -348,6 +354,7 @@ def save_result_settings(
     user_config["auto_read_max_chars"] = auto_read_max_chars
     user_config["manual_input_hotkey"] = manual_input_hotkey.strip()
     user_config["screenshot_enabled"] = screenshot_enabled
+    user_config["screenshot_auto_translate"] = screenshot_auto_translate
     user_config["screenshot_hotkey"] = screenshot_hotkey.strip()
     for key, value in (
         ("result_font_size", result_font_size),

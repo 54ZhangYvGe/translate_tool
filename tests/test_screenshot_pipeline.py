@@ -8,6 +8,57 @@ from unittest.mock import Mock, patch
 
 @unittest.skipUnless(importlib.util.find_spec("PySide6"), "PySide6 未安装")
 class ScreenshotPipelineTests(unittest.TestCase):
+    def test_ocr_only_skips_api_history_and_translation_loading(self):
+        from resident_app import TranslationWorker
+
+        worker = TranslationWorker("", "screenshot", "ocr-only", image_bytes=b"png")
+        finished, ready = [], []
+        worker.signals.finished.connect(finished.append)
+        worker.signals.ocr_ready.connect(ready.append)
+        with (
+            patch("resident_app.load_config", return_value={"screenshot_auto_translate": False}),
+            patch("screen_ocr.extract_text_from_png", return_value="Hello OCR"),
+            patch("resident_app.translate_text") as translate,
+            patch("resident_app.save_record") as save,
+        ):
+            worker.run()
+        translate.assert_not_called()
+        save.assert_not_called()
+        self.assertEqual(ready, [])
+        self.assertTrue(finished[0]["ocr_only"])
+        self.assertEqual(finished[0]["source_text"], "Hello OCR")
+
+    def test_ocr_only_does_not_change_manual_translation(self):
+        from resident_app import TranslationWorker
+
+        worker = TranslationWorker("Hello", "manual", "manual")
+        finished = []
+        worker.signals.finished.connect(finished.append)
+        config = {"screenshot_auto_translate": False}
+        with (
+            patch("resident_app.load_config", return_value=config),
+            patch("resident_app.translate_text", return_value="你好") as translate,
+            patch("resident_app.save_record", return_value=Path("history.txt")),
+        ):
+            worker.run()
+        translate.assert_called_once_with("Hello", config)
+        self.assertEqual(finished[0]["translation"], "你好")
+
+    def test_ocr_only_result_reaches_window_and_finishes_request(self):
+        from resident_app import ResidentApp
+
+        window = SimpleNamespace(apply_config_to_ui=Mock(), show_extracted_text=Mock(), update_result=Mock())
+        app = SimpleNamespace(window=window, finalize_successful_request=Mock(), finish_active_job=Mock())
+        result = {"ocr_only": True, "source_text": "Hello", "source_label": "screenshot",
+                  "config": {}, "request_id": "ocr-only", "request_path": Path("request.json"),
+                  "timings": {}, "elapsed_ms": 1}
+        with patch("resident_app.append_perf_log"):
+            ResidentApp.translation_finished(app, result)
+        window.show_extracted_text.assert_called_once_with("Hello")
+        window.update_result.assert_not_called()
+        app.finalize_successful_request.assert_called_once_with(Path("request.json"), False)
+        app.finish_active_job.assert_called_once()
+
     def test_worker_sends_only_ocr_text_to_translation(self):
         from resident_app import TranslationWorker
 

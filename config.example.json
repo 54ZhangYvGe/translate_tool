@@ -5,6 +5,7 @@
   "source_language": "auto",
   "hotkey": "Alt+T",
   "screenshot_enabled": true,
+  "screenshot_auto_translate": true,
   "screenshot_hotkey": "Ctrl+Alt+T",
   "youdao_api_url": "https://openapi.youdao.com/api",
   "youdao_tts_api_url": "https://openapi.youdao.com/ttsapi",
